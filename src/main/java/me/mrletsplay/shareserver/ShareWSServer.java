@@ -5,8 +5,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 
 import org.java_websocket.WebSocket;
 import org.java_websocket.framing.CloseFrame;
@@ -14,7 +14,7 @@ import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
-import me.mrletsplay.shareclientcore.connection.message.ChangeMessage;
+import me.mrletsplay.shareclientcore.connection.message.AddressableMessage;
 import me.mrletsplay.shareclientcore.connection.message.ClientHelloMessage;
 import me.mrletsplay.shareclientcore.connection.message.Message;
 import me.mrletsplay.shareclientcore.connection.message.PeerJoinMessage;
@@ -66,18 +66,43 @@ public class ShareWSServer extends WebSocketServer {
 			if(m instanceof ClientHelloMessage hello) {
 				Session session = ShareServer.getOrCreateSession(hello.sessionID());
 				int siteID = session.getNewSiteID();
-				conn.setAttachment(new SessionUser(session, siteID));
+				conn.setAttachment(new SessionUser(session, hello.username(), siteID));
 				send(conn, new ServerHelloMessage(RemoteConnection.PROTOCOL_VERSION, siteID));
-				getPeers(session).forEach(peer -> send(peer, new PeerJoinMessage(hello.username(), siteID)));
+				getPeers(session).forEach(peer -> {
+					if(peer != conn) {
+						SessionUser user = peer.getAttachment();
+						send(conn, new PeerJoinMessage(user.username(), user.siteID()));
+					}
+
+					send(peer, new PeerJoinMessage(hello.username(), siteID));
+				});
 			}else {
 				conn.close(CloseFrame.POLICY_VALIDATION, "First message must be CLIENT_HELLO");
 			}
 			return;
 		}
 
-		Session session = conn.getAttachment();
-		if(m instanceof ChangeMessage change) {
-			getPeers(session).forEach(peer -> send(peer, m));
+		SessionUser user = conn.getAttachment();
+		Session session = user.session();
+		switch(m.getType()) {
+			case CHANGE -> getPeers(session).forEach(peer -> send(peer, m));
+			case REQUEST_FULL_SYNC, REQUEST_CHECKSUM -> {
+				AddressableMessage msg = (AddressableMessage) m;
+				if(msg.siteID() != user.siteID()) {
+					conn.close(CloseFrame.POLICY_VALIDATION, "Invalid site id");
+					return;
+				}
+
+				send(getHost(getPeers(session)), m);
+			}
+			case FULL_SYNC, CHECKSUM -> {
+				AddressableMessage msg = (AddressableMessage) m;
+				WebSocket peer = getPeer(getPeers(session), msg.siteID());
+				if(peer != null) send(peer, m);
+			}
+			default -> {
+				conn.close(CloseFrame.POLICY_VALIDATION, "Invalid message received");
+			}
 		}
 
 //		System.out.println("Got a message");
@@ -88,8 +113,24 @@ public class ShareWSServer extends WebSocketServer {
 
 	private List<WebSocket> getPeers(Session session) {
 		return getConnections().stream()
-			.filter(c -> Objects.equals(c.getAttachment(), session))
+			.filter(c -> {
+				SessionUser user = c.getAttachment();
+				if(user == null) return false;
+				return user.session().equals(session);
+			})
 			.toList();
+	}
+
+	private WebSocket getHost(List<WebSocket> peers) {
+		return peers.stream()
+			.min(Comparator.comparing(p -> p.<SessionUser>getAttachment().siteID()))
+			.orElse(null);
+	}
+
+	private WebSocket getPeer(List<WebSocket> peers, int siteID) {
+		return peers.stream()
+			.filter(p -> p.<SessionUser>getAttachment().siteID() == siteID)
+			.findFirst().orElse(null);
 	}
 
 	@Override
