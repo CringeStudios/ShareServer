@@ -84,6 +84,7 @@ public class ShareWSServer extends WebSocketServer {
 
 		SessionUser user = conn.getAttachment();
 		Session session = user.session();
+		boolean isHost = getHost(getPeers(session)).equals(conn);
 		switch(m.getType()) {
 			case CHANGE -> getPeers(session).forEach(peer -> send(peer, m));
 			case REQUEST_FULL_SYNC, REQUEST_CHECKSUM -> {
@@ -96,9 +97,18 @@ public class ShareWSServer extends WebSocketServer {
 				send(getHost(getPeers(session)), m);
 			}
 			case FULL_SYNC, CHECKSUM -> {
+				if(!isHost) {
+					conn.close(CloseFrame.POLICY_VALIDATION, "Only host can send FULL_SYNC or CHECKSUM");
+					return;
+				}
+
 				AddressableMessage msg = (AddressableMessage) m;
-				WebSocket peer = getPeer(getPeers(session), msg.siteID());
-				if(peer != null) send(peer, m);
+				if(msg.siteID() == AddressableMessage.BROADCAST_SITE_ID) {
+					getPeers(session).forEach(peer -> send(peer, m));
+				}else {
+					WebSocket peer = getPeer(getPeers(session), msg.siteID());
+					if(peer != null) send(peer, m);
+				}
 			}
 			default -> {
 				conn.close(CloseFrame.POLICY_VALIDATION, "Invalid message received");
