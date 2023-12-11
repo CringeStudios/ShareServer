@@ -8,7 +8,7 @@ public class ShareServer {
 	private static final Map<String, Session> SESSIONS = new HashMap<>();
 
 	public static void main(String[] args) {
-		new ShareWSServer().start();
+		new ShareWSServer().run();
 	}
 
 	public static Session getOrCreateSession(String sessionID) {

@@ -85,6 +85,7 @@ public class ShareWSServer extends WebSocketServer {
 		SessionUser user = conn.getAttachment();
 		Session session = user.session();
 		boolean isHost = getHost(getPeers(session)).equals(conn);
+		System.out.println("[" + user.siteID() + "] " + m);
 		switch(m.getType()) {
 			case CHANGE -> getPeers(session).forEach(peer -> send(peer, m));
 			case REQUEST_FULL_SYNC, REQUEST_CHECKSUM -> {
@@ -114,11 +115,6 @@ public class ShareWSServer extends WebSocketServer {
 				conn.close(CloseFrame.POLICY_VALIDATION, "Invalid message received");
 			}
 		}
-
-//		System.out.println("Got a message");
-//		getConnections().forEach(c -> {
-//			if(conn != c) c.send(message);
-//		});
 	}
 
 	private List<WebSocket> getPeers(Session session) {
