@@ -87,7 +87,11 @@ public class ShareWSServer extends WebSocketServer {
 		boolean isHost = getHost(getPeers(session)).equals(conn);
 		System.out.println("[" + user.siteID() + "] " + m);
 		switch(m.getType()) {
-			case CHANGE -> getPeers(session).forEach(peer -> send(peer, m));
+			case CHANGE -> {
+				getPeers(session).stream()
+					.filter(p -> p.<SessionUser>getAttachment().siteID() != user.siteID())
+					.forEach(peer -> send(peer, m));
+			}
 			case REQUEST_FULL_SYNC, REQUEST_CHECKSUM -> {
 				AddressableMessage msg = (AddressableMessage) m;
 				if(msg.siteID() != user.siteID()) {
@@ -105,7 +109,9 @@ public class ShareWSServer extends WebSocketServer {
 
 				AddressableMessage msg = (AddressableMessage) m;
 				if(msg.siteID() == AddressableMessage.BROADCAST_SITE_ID) {
-					getPeers(session).forEach(peer -> send(peer, m));
+					getPeers(session).stream()
+						.filter(p -> p.<SessionUser>getAttachment().siteID() != user.siteID())
+						.forEach(peer -> send(peer, m));
 				}else {
 					WebSocket peer = getPeer(getPeers(session), msg.siteID());
 					if(peer != null) send(peer, m);
