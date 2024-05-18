@@ -152,7 +152,7 @@ public class ShareWSServer extends WebSocketServer {
 
 	@Override
 	public void onStart() {
-
+		System.out.println("Running");
 	}
 
 	public void send(WebSocket connection, Message message) {
